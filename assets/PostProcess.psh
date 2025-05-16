@@ -44,7 +44,7 @@ float4 main(in PSInput PSIn) : SV_Target
     else
     {
         // Background
-        Color = GetSkyColor(ViewRayDir, g_Constants.LightDir.xyz);
+        Color = GetSkyColor(ViewRayDir, g_Constants.LightDir.xyz, g_Constants.DayNightFactor);
     }
 
     switch (g_Constants.DrawMode)

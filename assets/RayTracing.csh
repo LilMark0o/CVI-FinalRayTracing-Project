@@ -273,7 +273,8 @@ END_SHADER_DECLARATION(CSMain, 8, 8)
         if (Refl.Found)
             Color = Refl.BaseColor * max(g_Constants.AmbientLight, Refl.NdotL);
         else
-            Color = GetSkyColor(Attribs.ReflectionRayDir, g_Constants.LightDir.xyz);
+            Color = GetSkyColor(Attribs.ReflectionRayDir, g_Constants.LightDir.xyz, g_Constants.DayNightFactor);
+
     }
 
     Color.a = max(g_Constants.AmbientLight, NdotL);

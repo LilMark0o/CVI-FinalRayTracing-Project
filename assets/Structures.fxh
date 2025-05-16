@@ -17,7 +17,7 @@ struct GlobalConstants
     int   DrawMode;
     float MaxRayLength;
     float AmbientLight;
-    int   padding0;
+    float DayNightFactor; // Reemplazamos padding0 con este factor
 };
 
 struct ObjectConstants

@@ -1724,14 +1724,22 @@ namespace Diligent
         {
             const float4x4 ViewProj = m_Camera.GetViewMatrix() * m_Camera.GetProjMatrix();
 
+            // Usar las direcciones almacenadas (que pueden ser modificadas por el gizmo)
+            float3 CurrentLightDir = normalize(lerp(m_NightLightDir, m_DayLightDir, m_DayNightFactor));
+
+            // Interpolar luz ambiental
+            float AmbientLight = lerp(0.02f, 0.1f, m_DayNightFactor);
+
             HLSL::GlobalConstants GConst;
-            GConst.ViewProj     = ViewProj.Transpose();
-            GConst.ViewProjInv  = ViewProj.Inverse().Transpose();
-            GConst.LightDir     = normalize(-m_LightDir);
-            GConst.CameraPos    = float4(m_Camera.GetPos(), 0.f);
-            GConst.DrawMode     = m_DrawMode;
-            GConst.MaxRayLength = 300.f; // MODIFICADO: aumentado de 100.f a 300.f para permitir mayor distancia de renderizado
-            GConst.AmbientLight = 0.1f;
+            GConst.ViewProj       = ViewProj.Transpose();
+            GConst.ViewProjInv    = ViewProj.Inverse().Transpose();
+            GConst.LightDir       = float4(CurrentLightDir, 0.0f);
+            GConst.CameraPos      = float4(m_Camera.GetPos(), 0.f);
+            GConst.DrawMode       = m_DrawMode;
+            GConst.MaxRayLength   = 300.f;
+            GConst.AmbientLight   = AmbientLight;
+            GConst.DayNightFactor = m_DayNightFactor; // Pasar el factor día/noche
+
             m_pImmediateContext->UpdateBuffer(m_Constants, 0, static_cast<Uint32>(sizeof(GConst)), &GConst, RESOURCE_STATE_TRANSITION_MODE_TRANSITION);
 
             // Update transformation for scene objects
@@ -1985,14 +1993,34 @@ namespace Diligent
 
             ImGui::Separator();
 
-            // Light direction control
-            ImGui::TextDisabled("Light Direction");
-            if (ImGui::gizmo3D("##LightDirection", m_LightDir))
+
+            // Day/Night slider
+            ImGui::TextDisabled("Day/Night Cycle");
+            if (ImGui::IsItemHovered())
+                ImGui::SetTooltip("0.0 = Night, 1.0 = Day");
+
+            ImGui::SliderFloat("##DayNight", &m_DayNightFactor, 0.0f, 1.0f, "%.2f");
+
+            ImGui::Separator();
+
+            // Light direction control with day/night toggle
+            if (ImGui::RadioButton("Day Light", m_EditingDayLight))
+                m_EditingDayLight = true;
+
+            ImGui::SameLine();
+
+            if (ImGui::RadioButton("Night Light", !m_EditingDayLight))
+                m_EditingDayLight = false;
+
+            // Usa el gizmo para controlar la luz actualmente seleccionada
+            float3& currentLight = m_EditingDayLight ? m_DayLightDir : m_NightLightDir;
+
+            if (ImGui::gizmo3D("##LightDirection", currentLight))
             {
-                if (m_LightDir.y > -0.06f)
+                if (currentLight.y > -0.06f)
                 {
-                    m_LightDir.y = -0.06f;
-                    m_LightDir   = normalize(m_LightDir);
+                    currentLight.y = -0.06f;
+                    currentLight   = normalize(currentLight);
                 }
             }
         }

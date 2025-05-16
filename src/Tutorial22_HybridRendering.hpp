@@ -210,12 +210,19 @@ private:
     GBuffer                 m_GBuffer;
     RefCntAutoPtr<ITexture> m_RayTracedTex;
 
-    float3 m_LightDir = normalize(float3{-0.49f, -0.60f, 0.64f});
+    float3 m_LightDir = normalize(float3{-0.3f, -0.05f, 0.4f});
+
+
     int    m_DrawMode = 0;
 
     // Building settings
+    float m_DayNightFactor = 1.0f; // 0.0 = noche, 1.0 = día (por defecto día)
     float m_BuildingDensity = 1.3f; // Controls building density multiplier (0.5-1.3)
     int   m_BuildingCount   = 100;  // Base number of buildings to create
+    float3 m_DayLightDir     = normalize(float3{-0.49f, -0.60f, 0.64f});
+    float3 m_NightLightDir   = normalize(float3{-0.3f, -0.05f, 0.4f});
+    bool   m_EditingDayLight = true; // True = editar luz diurna, False = editar luz nocturna
+
 
     int m_SpaceshipCount = 180; // Base number of spaceships to create
 
