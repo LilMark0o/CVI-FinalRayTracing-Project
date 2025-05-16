@@ -19,15 +19,15 @@ add_sample_app(Tutorial22_HybridRendering
         assets/PostProcess.psh
         assets/RayTracing.csh
     ASSETS
-        assets/DGLogo0.png
-        assets/DGLogo1.png
-        assets/DGLogo2.png
-        assets/DGLogo3.png
+        assets/metal1.jpg
+        assets/metal2.jpg
+        assets/metal3.jpg
         assets/Marble.jpg
         assets/Building1.png
         assets/Building2.png
         assets/Building3.png
         assets/Water.png
+        assets/Water.jpeg
     DXC_REQUIRED
         YES
 )

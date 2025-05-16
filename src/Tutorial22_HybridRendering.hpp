@@ -33,196 +33,202 @@
 namespace Diligent
 {
 
-    // We only need a 3x3 matrix, but in Vulkan and Metal, the rows of a float3x3 matrix are aligned to 16 bytes,
-    // which is effectively a float4x3 matrix.
-    // In DirectX, the rows of a float3x3 matrix are not aligned.
-    // We will use a float4x3 for compatibility between all APIs.
-    struct float4x3
-    {
-        float m00 = 0.f;
-        float m01 = 0.f;
-        float m02 = 0.f;
-        float m03 = 0.f; // Unused
+// We only need a 3x3 matrix, but in Vulkan and Metal, the rows of a float3x3 matrix are aligned to 16 bytes,
+// which is effectively a float4x3 matrix.
+// In DirectX, the rows of a float3x3 matrix are not aligned.
+// We will use a float4x3 for compatibility between all APIs.
+struct float4x3
+{
+    float m00 = 0.f;
+    float m01 = 0.f;
+    float m02 = 0.f;
+    float m03 = 0.f; // Unused
 
-        float m10 = 0.f;
-        float m11 = 0.f;
-        float m12 = 0.f;
-        float m13 = 0.f; // Unused
+    float m10 = 0.f;
+    float m11 = 0.f;
+    float m12 = 0.f;
+    float m13 = 0.f; // Unused
 
-        float m20 = 0.f;
-        float m21 = 0.f;
-        float m22 = 0.f;
-        float m23 = 0.f; // Unused
+    float m20 = 0.f;
+    float m21 = 0.f;
+    float m22 = 0.f;
+    float m23 = 0.f; // Unused
 
-        float4x3() {}
+    float4x3() {}
 
-        template <typename MatType>
-        float4x3(const MatType &Other) : // clang-format off
+    template <typename MatType>
+    float4x3(const MatType& Other) : // clang-format off
         m00{Other.m00}, m01{Other.m01}, m02{Other.m02}, 
         m10{Other.m10}, m11{Other.m11}, m12{Other.m12}, 
         m20{Other.m20}, m21{Other.m21}, m22{Other.m22}
-        // clang-format on
+    // clang-format on
+    {
+    }
+};
+
+namespace HLSL
+{
+#include "../assets/Structures.fxh"
+}
+
+class Tutorial22_HybridRendering final : public SampleBase
+{
+public:
+    virtual void ModifyEngineInitInfo(const ModifyEngineInitInfoAttribs& Attribs) override final;
+    virtual void Initialize(const SampleInitInfo& InitInfo) override final;
+
+    virtual void Render() override final;
+    virtual void Update(double CurrTime, double ElapsedTime, bool DoUpdateUI) override final;
+
+    virtual const Char* GetSampleName() const override final { return "Tutorial22: Hybrid rendering"; }
+
+    virtual void WindowResize(Uint32 Width, Uint32 Height) override final;
+
+protected:
+    virtual void UpdateUI() override final;
+
+private:
+    void CreateScene();
+    void CreateSceneMaterials(uint2& CubeMaterialRange, Uint32& GroundMaterial, std::vector<HLSL::MaterialAttribs>& Materials);
+    void CreateBuildingMaterials(uint2& BuildingMaterialRange, std::vector<HLSL::MaterialAttribs>& Materials, Uint32 SamplerInd);
+    void CreateSpaceshipMaterials(uint2& SpaceshipMaterialRange, std::vector<HLSL::MaterialAttribs>& Materials, Uint32 SamplerInd);
+    void CreateSceneObjects(const uint2 CubeMaterialRange, const uint2 BuildingMaterialRange, const uint2 SpaceshipMaterialRange, const Uint32 GroundMaterial);
+    void RecreateSceneObjects();
+    void CreateSceneAccelStructs();
+    void UpdateTLAS();
+    void CreateRasterizationPSO(IShaderSourceInputStreamFactory* pShaderSourceFactory);
+    void CreatePostProcessPSO(IShaderSourceInputStreamFactory* pShaderSourceFactory);
+    void CreateRayTracingPSO(IShaderSourceInputStreamFactory* pShaderSourceFactory);
+
+    // Pipeline resource signature for scene resources used by the ray-tracing PSO
+    RefCntAutoPtr<IPipelineResourceSignature> m_pRayTracingSceneResourcesSign;
+    // Pipeline resource signature for screen resources used by the ray-tracing PSO
+    RefCntAutoPtr<IPipelineResourceSignature> m_pRayTracingScreenResourcesSign;
+
+    // Ray-tracing PSO
+    RefCntAutoPtr<IPipelineState> m_RayTracingPSO;
+    // Scene resources for ray-tracing PSO
+    RefCntAutoPtr<IShaderResourceBinding> m_RayTracingSceneSRB;
+    // Screen resources for ray-tracing PSO
+    RefCntAutoPtr<IShaderResourceBinding> m_RayTracingScreenSRB;
+
+    // G-buffer rendering PSO and SRB
+    RefCntAutoPtr<IPipelineState>         m_RasterizationPSO;
+    RefCntAutoPtr<IShaderResourceBinding> m_RasterizationSRB;
+
+    // Post-processing PSO and SRB
+    RefCntAutoPtr<IPipelineState>         m_PostProcessPSO;
+    RefCntAutoPtr<IShaderResourceBinding> m_PostProcessSRB;
+
+    // Simple implementation of a mesh
+    struct Mesh
+    {
+        String Name;
+
+        RefCntAutoPtr<IBottomLevelAS> BLAS;
+        RefCntAutoPtr<IBuffer>        VertexBuffer;
+        RefCntAutoPtr<IBuffer>        IndexBuffer;
+
+        Uint32 NumVertices = 0;
+        Uint32 NumIndices  = 0;
+        Uint32 FirstIndex  = 0; // Offset in the index buffer if IB and VB are shared between multiple meshes
+        Uint32 FirstVertex = 0; // Offset in the vertex buffer
+    };
+    static Mesh CreateTexturedPlaneMesh(IRenderDevice* pDevice, float2 UVScale);
+    static Mesh CreateTexturedBuildingMesh(IRenderDevice* pDevice, float2 UVScale, float3 Dimensions);
+    static Mesh CreateSpaceshipMesh(IRenderDevice* pDevice, float2 UVScale);
+
+    // Objects with the same mesh are grouped for instanced draw call
+    struct InstancedObjects
+    {
+        Uint32 MeshInd             = 0; // Index in m_Scene.Meshes
+        Uint32 ObjectAttribsOffset = 0; // Offset in m_Scene.ObjectAttribsBuffer
+        Uint32 NumObjects          = 0; // Number of instances for a draw call
+    };
+
+    struct DynamicObject
+    {
+        Uint32 ObjectAttribsIndex = 0; // Index in m_Scene.ObjectAttribsBuffer
+    };
+
+    struct Scene
+    {
+        std::vector<InstancedObjects>    ObjectInstances;
+        std::vector<DynamicObject>       DynamicObjects;
+        std::vector<HLSL::ObjectAttribs> Objects; // CPU-visible array of HLSL::ObjectAttribs
+
+        // Resources used by shaders
+        std::vector<Mesh>                    Meshes;
+        RefCntAutoPtr<IBuffer>               MaterialAttribsBuffer;
+        RefCntAutoPtr<IBuffer>               ObjectAttribsBuffer; // GPU-visible array of HLSL::ObjectAttribs
+        std::vector<RefCntAutoPtr<ITexture>> Textures;
+        std::vector<RefCntAutoPtr<ISampler>> Samplers;
+        RefCntAutoPtr<IBuffer>               ObjectConstants;
+
+        // Resources for ray tracing
+        RefCntAutoPtr<ITopLevelAS> TLAS;
+        RefCntAutoPtr<IBuffer>     TLASInstancesBuffer; // Used to update TLAS
+        RefCntAutoPtr<IBuffer>     TLASScratchBuffer;   // Used to update TLAS
+
+        // Scene state variables
+        uint2  CubeMaterialRange;
+        uint2  BuildingMaterialRange;
+        uint2  SpaceshipMaterialRange;
+        Uint32 GroundMaterial;
+        Uint32 PlaneMeshId;
+        Uint32 BuildingMeshId;
+        Uint32 SpaceshipMeshId;
+
+        // Clear scene objects but keep resources
+        void ClearObjects()
         {
+            ObjectInstances.clear();
+            DynamicObjects.clear();
+            Objects.clear();
         }
     };
+    Scene m_Scene;
 
-    namespace HLSL
+    // Constants shared between all PSOs
+    RefCntAutoPtr<IBuffer> m_Constants;
+
+    FirstPersonCamera m_Camera;
+
+    struct GBuffer
     {
-#include "../assets/Structures.fxh"
-    }
-
-    class Tutorial22_HybridRendering final : public SampleBase
-    {
-    public:
-        virtual void ModifyEngineInitInfo(const ModifyEngineInitInfoAttribs &Attribs) override final;
-        virtual void Initialize(const SampleInitInfo &InitInfo) override final;
-
-        virtual void Render() override final;
-        virtual void Update(double CurrTime, double ElapsedTime, bool DoUpdateUI) override final;
-
-        virtual const Char *GetSampleName() const override final { return "Tutorial22: Hybrid rendering"; }
-
-        virtual void WindowResize(Uint32 Width, Uint32 Height) override final;
-
-    protected:
-        virtual void UpdateUI() override final;
-
-    private:
-        void CreateScene();
-        void CreateSceneMaterials(uint2 &CubeMaterialRange, Uint32 &GroundMaterial, std::vector<HLSL::MaterialAttribs> &Materials);
-        void CreateBuildingMaterials(uint2 &BuildingMaterialRange, std::vector<HLSL::MaterialAttribs> &Materials, Uint32 SamplerInd);
-        void CreateSceneObjects(const uint2 CubeMaterialRange, const uint2 BuildingMaterialRange, const Uint32 GroundMaterial);
-        void RecreateSceneObjects();
-        void CreateSceneAccelStructs();
-        void UpdateTLAS();
-        void CreateRasterizationPSO(IShaderSourceInputStreamFactory *pShaderSourceFactory);
-        void CreatePostProcessPSO(IShaderSourceInputStreamFactory *pShaderSourceFactory);
-        void CreateRayTracingPSO(IShaderSourceInputStreamFactory *pShaderSourceFactory);
-
-        // Pipeline resource signature for scene resources used by the ray-tracing PSO
-        RefCntAutoPtr<IPipelineResourceSignature> m_pRayTracingSceneResourcesSign;
-        // Pipeline resource signature for screen resources used by the ray-tracing PSO
-        RefCntAutoPtr<IPipelineResourceSignature> m_pRayTracingScreenResourcesSign;
-
-        // Ray-tracing PSO
-        RefCntAutoPtr<IPipelineState> m_RayTracingPSO;
-        // Scene resources for ray-tracing PSO
-        RefCntAutoPtr<IShaderResourceBinding> m_RayTracingSceneSRB;
-        // Screen resources for ray-tracing PSO
-        RefCntAutoPtr<IShaderResourceBinding> m_RayTracingScreenSRB;
-
-        // G-buffer rendering PSO and SRB
-        RefCntAutoPtr<IPipelineState> m_RasterizationPSO;
-        RefCntAutoPtr<IShaderResourceBinding> m_RasterizationSRB;
-
-        // Post-processing PSO and SRB
-        RefCntAutoPtr<IPipelineState> m_PostProcessPSO;
-        RefCntAutoPtr<IShaderResourceBinding> m_PostProcessSRB;
-
-        // Simple implementation of a mesh
-        struct Mesh
-        {
-            String Name;
-
-            RefCntAutoPtr<IBottomLevelAS> BLAS;
-            RefCntAutoPtr<IBuffer> VertexBuffer;
-            RefCntAutoPtr<IBuffer> IndexBuffer;
-
-            Uint32 NumVertices = 0;
-            Uint32 NumIndices = 0;
-            Uint32 FirstIndex = 0;  // Offset in the index buffer if IB and VB are shared between multiple meshes
-            Uint32 FirstVertex = 0; // Offset in the vertex buffer
-        };
-        static Mesh CreateTexturedPlaneMesh(IRenderDevice *pDevice, float2 UVScale);
-        static Mesh CreateTexturedBuildingMesh(IRenderDevice *pDevice, float2 UVScale, float3 Dimensions);
-
-        // Objects with the same mesh are grouped for instanced draw call
-        struct InstancedObjects
-        {
-            Uint32 MeshInd = 0;             // Index in m_Scene.Meshes
-            Uint32 ObjectAttribsOffset = 0; // Offset in m_Scene.ObjectAttribsBuffer
-            Uint32 NumObjects = 0;          // Number of instances for a draw call
-        };
-
-        struct DynamicObject
-        {
-            Uint32 ObjectAttribsIndex = 0; // Index in m_Scene.ObjectAttribsBuffer
-        };
-
-        struct Scene
-        {
-            std::vector<InstancedObjects> ObjectInstances;
-            std::vector<DynamicObject> DynamicObjects;
-            std::vector<HLSL::ObjectAttribs> Objects; // CPU-visible array of HLSL::ObjectAttribs
-
-            // Resources used by shaders
-            std::vector<Mesh> Meshes;
-            RefCntAutoPtr<IBuffer> MaterialAttribsBuffer;
-            RefCntAutoPtr<IBuffer> ObjectAttribsBuffer; // GPU-visible array of HLSL::ObjectAttribs
-            std::vector<RefCntAutoPtr<ITexture>> Textures;
-            std::vector<RefCntAutoPtr<ISampler>> Samplers;
-            RefCntAutoPtr<IBuffer> ObjectConstants;
-
-            // Resources for ray tracing
-            RefCntAutoPtr<ITopLevelAS> TLAS;
-            RefCntAutoPtr<IBuffer> TLASInstancesBuffer; // Used to update TLAS
-            RefCntAutoPtr<IBuffer> TLASScratchBuffer;   // Used to update TLAS
-
-            // Scene state variables
-            uint2 CubeMaterialRange;
-            uint2 BuildingMaterialRange;
-            Uint32 GroundMaterial;
-            Uint32 PlaneMeshId;
-            Uint32 BuildingMeshId;
-
-            // Clear scene objects but keep resources
-            void ClearObjects()
-            {
-                ObjectInstances.clear();
-                DynamicObjects.clear();
-                Objects.clear();
-            }
-        };
-        Scene m_Scene;
-
-        // Constants shared between all PSOs
-        RefCntAutoPtr<IBuffer> m_Constants;
-
-        FirstPersonCamera m_Camera;
-
-        struct GBuffer
-        {
-            RefCntAutoPtr<ITexture> Color;
-            RefCntAutoPtr<ITexture> Normal;
-            RefCntAutoPtr<ITexture> Depth;
-        };
-
-        const uint2 m_BlockSize = {8, 8};
-        TEXTURE_FORMAT m_ColorTargetFormat = TEX_FORMAT_RGBA8_UNORM;
-        TEXTURE_FORMAT m_NormalTargetFormat = TEX_FORMAT_RGBA16_FLOAT;
-        TEXTURE_FORMAT m_DepthTargetFormat = TEX_FORMAT_D32_FLOAT;
-        TEXTURE_FORMAT m_RayTracedTexFormat = TEX_FORMAT_RGBA16_FLOAT;
-
-        GBuffer m_GBuffer;
-        RefCntAutoPtr<ITexture> m_RayTracedTex;
-
-        float3 m_LightDir = normalize(float3{-0.49f, -0.60f, 0.64f});
-        int m_DrawMode = 0;
-
-        // Building settings
-        float m_BuildingDensity = 1.3f; // Controls building density multiplier (0.5-1.3)
-        int m_BuildingCount = 100;      // Base number of buildings to create
-
-        // Scene settings
-        bool m_NeedRecreateScene = false;
-
-        // Vulkan and DirectX require DXC shader compiler.
-        // Metal uses the builtin glslang compiler.
-#if PLATFORM_MACOS || PLATFORM_IOS || PLATFORM_TVOS
-        const SHADER_COMPILER m_ShaderCompiler = SHADER_COMPILER_DEFAULT;
-#else
-        const SHADER_COMPILER m_ShaderCompiler = SHADER_COMPILER_DXC;
-#endif
+        RefCntAutoPtr<ITexture> Color;
+        RefCntAutoPtr<ITexture> Normal;
+        RefCntAutoPtr<ITexture> Depth;
     };
+
+    const uint2    m_BlockSize          = {8, 8};
+    TEXTURE_FORMAT m_ColorTargetFormat  = TEX_FORMAT_RGBA8_UNORM;
+    TEXTURE_FORMAT m_NormalTargetFormat = TEX_FORMAT_RGBA16_FLOAT;
+    TEXTURE_FORMAT m_DepthTargetFormat  = TEX_FORMAT_D32_FLOAT;
+    TEXTURE_FORMAT m_RayTracedTexFormat = TEX_FORMAT_RGBA16_FLOAT;
+
+    GBuffer                 m_GBuffer;
+    RefCntAutoPtr<ITexture> m_RayTracedTex;
+
+    float3 m_LightDir = normalize(float3{-0.49f, -0.60f, 0.64f});
+    int    m_DrawMode = 0;
+
+    // Building settings
+    float m_BuildingDensity = 1.3f; // Controls building density multiplier (0.5-1.3)
+    int   m_BuildingCount   = 100;  // Base number of buildings to create
+
+    int m_SpaceshipCount = 180; // Base number of spaceships to create
+
+    // Scene settings
+    bool m_NeedRecreateScene = false;
+
+    // Vulkan and DirectX require DXC shader compiler.
+    // Metal uses the builtin glslang compiler.
+#if PLATFORM_MACOS || PLATFORM_IOS || PLATFORM_TVOS
+    const SHADER_COMPILER m_ShaderCompiler = SHADER_COMPILER_DEFAULT;
+#else
+    const SHADER_COMPILER m_ShaderCompiler = SHADER_COMPILER_DXC;
+#endif
+};
 
 } // namespace Diligent

@@ -25,7 +25,6 @@ namespace Diligent
         Uint32 AnisotropicClampSampInd = 0;
         Uint32 AnisotropicWrapSampInd = 0;
 
-        // Create samplers
         {
             const SamplerDesc AnisotropicClampSampler{
                 FILTER_TYPE_ANISOTROPIC, FILTER_TYPE_ANISOTROPIC, FILTER_TYPE_ANISOTROPIC,
@@ -66,10 +65,9 @@ namespace Diligent
 
         // Cube materials
         CubeMaterialRange.x = static_cast<Uint32>(Materials.size());
-        LoadMaterial("DGLogo0.png", float4{1.f}, AnisotropicClampSampInd);
-        LoadMaterial("DGLogo1.png", float4{1.f}, AnisotropicClampSampInd);
-        LoadMaterial("DGLogo2.png", float4{1.f}, AnisotropicClampSampInd);
-        LoadMaterial("DGLogo3.png", float4{1.f}, AnisotropicClampSampInd);
+        LoadMaterial("metal1.jpg", float4{1.f}, AnisotropicClampSampInd);
+        LoadMaterial("metal2.jpg", float4{1.f}, AnisotropicClampSampInd);
+        LoadMaterial("metal3.jpg", float4{1.f}, AnisotropicClampSampInd);
         CubeMaterialRange.y = static_cast<Uint32>(Materials.size());
 
         // Ground material
@@ -275,114 +273,174 @@ namespace Diligent
         return BuildingMesh;
     }
 
-    void Tutorial22_HybridRendering::CreateSceneObjects(const uint2 CubeMaterialRange, const uint2 BuildingMaterialRange, const Uint32 GroundMaterial)
-    {
-        // Save material ranges for recreating objects later
-        m_Scene.CubeMaterialRange = CubeMaterialRange;
-        m_Scene.BuildingMaterialRange = BuildingMaterialRange;
-        m_Scene.GroundMaterial = GroundMaterial;
+    // 5. Añadir más materiales para naves espaciales con colores más interesantes
+    // Reemplaza la función CreateSpaceshipMaterials con esta versión mejorada:
 
-        // Clear any existing objects from the scene
+    void Tutorial22_HybridRendering::CreateSpaceshipMaterials(uint2& SpaceshipMaterialRange, std::vector<HLSL::MaterialAttribs>& Materials, Uint32 SamplerInd)
+    {
+        SpaceshipMaterialRange.x = static_cast<Uint32>(Materials.size());
+
+        // Define una función para cargar materiales (similar a la de los edificios)
+        const auto LoadMaterial = [&](const char* ColorMapName, const float4& BaseColor, Uint32 SamplerInd) //
+        {
+            TextureLoadInfo loadInfo;
+            loadInfo.IsSRGB       = true;
+            loadInfo.GenerateMips = true;
+            RefCntAutoPtr<ITexture> Tex;
+            CreateTextureFromFile(ColorMapName, loadInfo, m_pDevice, &Tex);
+            VERIFY_EXPR(Tex);
+
+            HLSL::MaterialAttribs mtr;
+            mtr.SampInd         = SamplerInd;
+            mtr.BaseColorMask   = BaseColor;
+            mtr.BaseColorTexInd = static_cast<Uint32>(m_Scene.Textures.size());
+            m_Scene.Textures.push_back(std::move(Tex));
+            Materials.push_back(mtr);
+        };
+
+        LoadMaterial("metal3.jpg", float4{0.05f, 0.05f, 0.07f, 1.0f}, SamplerInd); // Negro azulado muy oscuro
+        LoadMaterial("metal1.jpg", float4{0.1f, 0.1f, 0.15f, 1.0f}, SamplerInd);   // Negro azulado oscuro
+        LoadMaterial("metal2.jpg", float4{0.2f, 0.1f, 0.3f, 1.0f}, SamplerInd);    // Púrpura oscuro
+        LoadMaterial("metal3.jpg", float4{0.1f, 0.2f, 0.3f, 1.0f}, SamplerInd);    // Azul marino
+
+        LoadMaterial("metal1.jpg", float4{0.7f, 0.5f, 0.3f, 1.0f}, SamplerInd); // Bronce/cobre
+        LoadMaterial("metal2.jpg", float4{0.5f, 0.5f, 0.8f, 1.0f}, SamplerInd); // Azul metálico
+        LoadMaterial("metal3.jpg", float4{0.3f, 0.7f, 0.4f, 1.0f}, SamplerInd); // Verde metálico
+
+        LoadMaterial("metal1.jpg", float4{1.0f, 0.4f, 0.1f, 1.0f}, SamplerInd); // Naranja brillante
+        LoadMaterial("metal2.jpg", float4{0.8f, 0.2f, 0.8f, 1.0f}, SamplerInd); // Magenta brillante
+        LoadMaterial("metal3.jpg", float4{0.2f, 0.5f, 1.0f, 1.0f}, SamplerInd); // Azul brillante
+
+        SpaceshipMaterialRange.y = static_cast<Uint32>(Materials.size());
+    }
+
+    void Tutorial22_HybridRendering::CreateSceneObjects(const uint2 CubeMaterialRange, const uint2 BuildingMaterialRange, const uint2 SpaceshipMaterialRange, const Uint32 GroundMaterial)
+    {
+        m_Scene.CubeMaterialRange      = CubeMaterialRange;
+        m_Scene.BuildingMaterialRange  = BuildingMaterialRange;
+        m_Scene.SpaceshipMaterialRange = SpaceshipMaterialRange;
+        m_Scene.GroundMaterial         = GroundMaterial;
+
         m_Scene.ClearObjects();
 
-        Uint32 PlaneMeshId = 0;
-        Uint32 BuildingMeshId = 0;
+        Uint32 PlaneMeshId     = 0;
+        Uint32 BuildingMeshId  = 0;
+        Uint32 SpaceshipMeshId = 0;
 
-        // Create meshes if they don't exist yet
         if (m_Scene.Meshes.empty())
         {
-            // Create plane mesh
             Mesh PlaneMesh = CreateTexturedPlaneMesh(m_pDevice, float2{25});
 
-            // Create building mesh with better proportions for high-rise buildings
-            // Using a smaller building size than before
             Mesh BuildingMesh = CreateTexturedBuildingMesh(m_pDevice, float2{1}, float3{2.0f, 8.0f, 2.0f});
 
-            const RayTracingProperties &RTProps = m_pDevice->GetAdapterInfo().RayTracing;
+            Mesh SpaceshipMesh = CreateSpaceshipMesh(m_pDevice, float2{1});
 
-            // Plane mesh will be first in the buffer
+            const RayTracingProperties& RTProps = m_pDevice->GetAdapterInfo().RayTracing;
+
             PlaneMesh.FirstVertex = 0;
-            PlaneMesh.FirstIndex = 0;
+            PlaneMesh.FirstIndex  = 0;
 
-            // Building mesh data will reside after the plane. Offsets must be properly aligned!
             BuildingMesh.FirstVertex = AlignUp(PlaneMesh.NumVertices * Uint32{sizeof(HLSL::Vertex)},
                                                RTProps.VertexBufferAlignment) /
-                                       sizeof(HLSL::Vertex);
+                sizeof(HLSL::Vertex);
             BuildingMesh.FirstIndex = AlignUp(PlaneMesh.NumIndices * Uint32{sizeof(uint)},
                                               RTProps.IndexBufferAlignment) /
-                                      sizeof(uint);
+                sizeof(uint);
 
-            // Create merged vertex buffer
+            SpaceshipMesh.FirstVertex = AlignUp((BuildingMesh.FirstVertex + BuildingMesh.NumVertices) * Uint32{sizeof(HLSL::Vertex)},
+                                                RTProps.VertexBufferAlignment) /
+                sizeof(HLSL::Vertex);
+            SpaceshipMesh.FirstIndex = AlignUp((BuildingMesh.FirstIndex + BuildingMesh.NumIndices) * Uint32{sizeof(uint)},
+                                               RTProps.IndexBufferAlignment) /
+                sizeof(uint);
+
             {
                 BufferDesc VBDesc;
-                VBDesc.Name = "Shared vertex buffer";
-                VBDesc.BindFlags = BIND_VERTEX_BUFFER | BIND_SHADER_RESOURCE | BIND_RAY_TRACING;
-                VBDesc.Size = (Uint64{BuildingMesh.FirstVertex} + Uint64{BuildingMesh.NumVertices}) * sizeof(HLSL::Vertex);
-                VBDesc.Mode = BUFFER_MODE_STRUCTURED;
+                VBDesc.Name              = "Shared vertex buffer";
+                VBDesc.BindFlags         = BIND_VERTEX_BUFFER | BIND_SHADER_RESOURCE | BIND_RAY_TRACING;
+                VBDesc.Size              = (Uint64{SpaceshipMesh.FirstVertex} + Uint64{SpaceshipMesh.NumVertices}) * sizeof(HLSL::Vertex);
+                VBDesc.Mode              = BUFFER_MODE_STRUCTURED;
                 VBDesc.ElementByteStride = sizeof(HLSL::Vertex);
 
                 RefCntAutoPtr<IBuffer> pSharedVB;
                 m_pDevice->CreateBuffer(VBDesc, nullptr, &pSharedVB);
 
-                // Copy plane vertices
                 m_pImmediateContext->CopyBuffer(PlaneMesh.VertexBuffer, 0, RESOURCE_STATE_TRANSITION_MODE_TRANSITION,
                                                 pSharedVB, PlaneMesh.FirstVertex * sizeof(HLSL::Vertex),
                                                 PlaneMesh.NumVertices * sizeof(HLSL::Vertex),
                                                 RESOURCE_STATE_TRANSITION_MODE_TRANSITION);
 
-                // Copy building vertices
                 m_pImmediateContext->CopyBuffer(BuildingMesh.VertexBuffer, 0, RESOURCE_STATE_TRANSITION_MODE_TRANSITION,
                                                 pSharedVB, BuildingMesh.FirstVertex * sizeof(HLSL::Vertex),
                                                 BuildingMesh.NumVertices * sizeof(HLSL::Vertex),
                                                 RESOURCE_STATE_TRANSITION_MODE_TRANSITION);
 
-                PlaneMesh.VertexBuffer = pSharedVB;
-                BuildingMesh.VertexBuffer = pSharedVB;
+                m_pImmediateContext->CopyBuffer(SpaceshipMesh.VertexBuffer, 0, RESOURCE_STATE_TRANSITION_MODE_TRANSITION,
+                                                pSharedVB, SpaceshipMesh.FirstVertex * sizeof(HLSL::Vertex),
+                                                SpaceshipMesh.NumVertices * sizeof(HLSL::Vertex),
+                                                RESOURCE_STATE_TRANSITION_MODE_TRANSITION);
+
+                PlaneMesh.VertexBuffer     = pSharedVB;
+                BuildingMesh.VertexBuffer  = pSharedVB;
+                SpaceshipMesh.VertexBuffer = pSharedVB;
             }
 
-            // Create merged index buffer
             {
                 BufferDesc IBDesc;
-                IBDesc.Name = "Shared index buffer";
-                IBDesc.BindFlags = BIND_INDEX_BUFFER | BIND_SHADER_RESOURCE | BIND_RAY_TRACING;
-                IBDesc.Size = (Uint64{BuildingMesh.FirstIndex} + Uint64{BuildingMesh.NumIndices}) * sizeof(uint);
-                IBDesc.Mode = BUFFER_MODE_STRUCTURED;
+                IBDesc.Name              = "Shared index buffer";
+                IBDesc.BindFlags         = BIND_INDEX_BUFFER | BIND_SHADER_RESOURCE | BIND_RAY_TRACING;
+                IBDesc.Size              = (Uint64{SpaceshipMesh.FirstIndex} + Uint64{SpaceshipMesh.NumIndices}) * sizeof(uint);
+                IBDesc.Mode              = BUFFER_MODE_STRUCTURED;
                 IBDesc.ElementByteStride = sizeof(uint);
 
                 RefCntAutoPtr<IBuffer> pSharedIB;
                 m_pDevice->CreateBuffer(IBDesc, nullptr, &pSharedIB);
 
-                // Copy plane indices
                 m_pImmediateContext->CopyBuffer(PlaneMesh.IndexBuffer, 0, RESOURCE_STATE_TRANSITION_MODE_TRANSITION,
                                                 pSharedIB, PlaneMesh.FirstIndex * sizeof(uint),
                                                 PlaneMesh.NumIndices * sizeof(uint),
                                                 RESOURCE_STATE_TRANSITION_MODE_TRANSITION);
 
-                // Copy building indices
+                // Copia los índices del edificio
                 m_pImmediateContext->CopyBuffer(BuildingMesh.IndexBuffer, 0, RESOURCE_STATE_TRANSITION_MODE_TRANSITION,
                                                 pSharedIB, BuildingMesh.FirstIndex * sizeof(uint),
                                                 BuildingMesh.NumIndices * sizeof(uint),
                                                 RESOURCE_STATE_TRANSITION_MODE_TRANSITION);
 
-                PlaneMesh.IndexBuffer = pSharedIB;
-                BuildingMesh.IndexBuffer = pSharedIB;
+                // Copia los índices de la nave espacial
+                m_pImmediateContext->CopyBuffer(SpaceshipMesh.IndexBuffer, 0, RESOURCE_STATE_TRANSITION_MODE_TRANSITION,
+                                                pSharedIB, SpaceshipMesh.FirstIndex * sizeof(uint),
+                                                SpaceshipMesh.NumIndices * sizeof(uint),
+                                                RESOURCE_STATE_TRANSITION_MODE_TRANSITION);
+
+                PlaneMesh.IndexBuffer     = pSharedIB;
+                BuildingMesh.IndexBuffer  = pSharedIB;
+                SpaceshipMesh.IndexBuffer = pSharedIB;
             }
 
             PlaneMeshId = static_cast<Uint32>(m_Scene.Meshes.size());
             m_Scene.Meshes.push_back(PlaneMesh);
             BuildingMeshId = static_cast<Uint32>(m_Scene.Meshes.size());
             m_Scene.Meshes.push_back(BuildingMesh);
+            SpaceshipMeshId = static_cast<Uint32>(m_Scene.Meshes.size());
+            m_Scene.Meshes.push_back(SpaceshipMesh);
 
-            // Store mesh IDs for later use
-            m_Scene.PlaneMeshId = PlaneMeshId;
-            m_Scene.BuildingMeshId = BuildingMeshId;
+            // Guarda los IDs de las mallas para uso posterior
+            m_Scene.PlaneMeshId     = PlaneMeshId;
+            m_Scene.BuildingMeshId  = BuildingMeshId;
+            m_Scene.SpaceshipMeshId = SpaceshipMeshId;
         }
         else
         {
-            // Reuse existing meshes
-            PlaneMeshId = m_Scene.PlaneMeshId;
-            BuildingMeshId = m_Scene.BuildingMeshId;
+            // Reutiliza las mallas existentes
+            PlaneMeshId     = m_Scene.PlaneMeshId;
+            BuildingMeshId  = m_Scene.BuildingMeshId;
+            SpaceshipMeshId = m_Scene.SpaceshipMeshId;
         }
+
+        // Calculate building positions with density factor
+        // 2. Ahora, mejoremos la distribución de edificios y naves espaciales
+        // Reemplaza esta sección en CreateSceneObjects para mejorar la distribución de edificios:
 
         // Calculate building positions with density factor
         const int TotalBuildingCount = static_cast<int>(m_BuildingCount * m_BuildingDensity);
@@ -405,98 +463,335 @@ namespace Diligent
         // Reduced minimum distance between buildings for denser placement
         const float MinDistance = 2.0f / m_BuildingDensity;
 
-        // Create buildings with non-overlapping positions
-        int attemptsRemaining = TotalBuildingCount * 10; // Limit total placement attempts
-        int buildingsPlaced = 0;
+        // Mejorar la distribución para evitar áreas calvas
+        // Dividimos el área en sectores y aseguramos que los edificios cubran toda la zona
+        const int SectorsX           = 8; // Divisiones en X
+        const int SectorsZ           = 8; // Divisiones en Z
+        const int BuildingsPerSector = TotalBuildingCount / (SectorsX * SectorsZ) + 1;
 
-        while (buildingsPlaced < TotalBuildingCount && attemptsRemaining > 0)
+        // Create buildings with improved distribution
+        for (int sectorX = 0; sectorX < SectorsX; sectorX++)
         {
-            attemptsRemaining--;
-
-            // Generate random position within area
-            float X = (std::rand() % 200) / 100.0f * AreaSize - AreaSize;
-            float Z = (std::rand() % 200) / 100.0f * AreaSize - AreaSize;
-
-            // Keep away from center (where camera starts)
-            if (std::abs(X) < 5.0f && std::abs(Z) < 5.0f)
+            for (int sectorZ = 0; sectorZ < SectorsZ; sectorZ++)
             {
-                X += (X < 0) ? -5.0f : 5.0f;
-                Z += (Z < 0) ? -5.0f : 5.0f;
-            }
+                // Calcula los límites de este sector
+                float sectorMinX = -AreaSize + (2 * AreaSize / SectorsX) * sectorX;
+                float sectorMaxX = -AreaSize + (2 * AreaSize / SectorsX) * (sectorX + 1);
+                float sectorMinZ = -AreaSize + (2 * AreaSize / SectorsZ) * sectorZ;
+                float sectorMaxZ = -AreaSize + (2 * AreaSize / SectorsZ) * (sectorZ + 1);
 
-            // Randomize building properties - using smaller scale range for more uniform buildings
-            float Angle = (std::rand() % 100) / 100.0f * PI_F;
-            float Y = (std::rand() % 100) / 100.0f * 0.5f; // Height off ground (reduced)
-
-            // Use smaller scale range for buildings to fit more of them
-            float Scale = 0.4f + (std::rand() % 100) / 100.0f * 0.3f;
-
-            // Calculate building footprint radius - smaller than before
-            float buildingRadius = Scale * 1.0f;
-
-            // Check for overlaps with existing buildings
-            bool overlaps = false;
-            for (const auto &building : placedBuildings)
-            {
-                float dx = X - building.x;
-                float dz = Z - building.z;
-                float distance = std::sqrt(dx * dx + dz * dz);
-
-                // If distance is less than sum of radii plus minimum spacing, we have an overlap
-                if (distance < (buildingRadius + building.radius + MinDistance))
+                // Construye varios edificios en este sector
+                for (int b = 0; b < BuildingsPerSector; b++)
                 {
-                    overlaps = true;
-                    break;
+                    if (placedBuildings.size() >= TotalBuildingCount)
+                        break; // Ya hemos colocado suficientes edificios
+
+                    // Intenta colocar un edificio varias veces
+                    int attempts = 20;
+                    while (attempts > 0)
+                    {
+                        attempts--;
+
+                        // Genera posición aleatoria dentro de este sector
+                        float X = sectorMinX + ((std::rand() % 100) / 100.0f) * (sectorMaxX - sectorMinX);
+                        float Z = sectorMinZ + ((std::rand() % 100) / 100.0f) * (sectorMaxZ - sectorMinZ);
+
+                        // Mantén lejos del centro (donde inicia la cámara)
+                        if (std::abs(X) < 5.0f && std::abs(Z) < 5.0f)
+                        {
+                            X += (X < 0) ? -5.0f : 5.0f;
+                            Z += (Z < 0) ? -5.0f : 5.0f;
+                            continue;
+                        }
+
+                        // Propiedades aleatorias del edificio
+                        float Angle          = (std::rand() % 100) / 100.0f * PI_F;
+                        float Y              = (std::rand() % 100) / 100.0f * 0.5f; // Altura sobre el suelo
+                        float Scale          = 0.4f + (std::rand() % 100) / 100.0f * 0.3f;
+                        float buildingRadius = Scale * 1.0f;
+
+                        // Verifica superposiciones
+                        bool overlaps = false;
+                        for (const auto& building : placedBuildings)
+                        {
+                            float dx       = X - building.x;
+                            float dz       = Z - building.z;
+                            float distance = std::sqrt(dx * dx + dz * dz);
+                            if (distance < (buildingRadius + building.radius + MinDistance))
+                            {
+                                overlaps = true;
+                                break;
+                            }
+                        }
+
+                        if (!overlaps)
+                        {
+                            // Posiciona el edificio
+                            const float4x4 ModelMat = float4x4::RotationY(Angle * PI_F) *
+                                float4x4::Scale(Scale) *
+                                float4x4::Translation(X * 2.0f, Y * 1.0f - 1.0f, Z * 2.0f);
+
+                            HLSL::ObjectAttribs obj;
+                            obj.ModelMat    = ModelMat.Transpose();
+                            obj.NormalMat   = obj.ModelMat;
+                            obj.MaterialId  = (placedBuildings.size() % (BuildingMaterialRange.y - BuildingMaterialRange.x)) + BuildingMaterialRange.x;
+                            obj.MeshId      = BuildingMeshId;
+                            obj.FirstIndex  = m_Scene.Meshes[obj.MeshId].FirstIndex;
+                            obj.FirstVertex = m_Scene.Meshes[obj.MeshId].FirstVertex;
+                            m_Scene.Objects.push_back(obj);
+
+                            // Añade a la lista
+                            placedBuildings.push_back({X, Z, buildingRadius});
+                            break;
+                        }
+                    }
                 }
             }
-
-            // Skip this position if it overlaps
-            if (overlaps)
-            {
-                continue;
-            }
-
-            // Position buildings closer to the water by using a lower Y offset
-            // The water level is at -1.5f, so we'll position buildings just above that
-            const float4x4 ModelMat = float4x4::RotationY(Angle * PI_F) * float4x4::Scale(Scale) * float4x4::Translation(X * 2.0f, Y * 1.0f - 1.0f, Z * 2.0f);
-
-            HLSL::ObjectAttribs obj;
-            obj.ModelMat = ModelMat.Transpose();
-            obj.NormalMat = obj.ModelMat;
-            obj.MaterialId = (buildingsPlaced % (BuildingMaterialRange.y - BuildingMaterialRange.x)) + BuildingMaterialRange.x;
-            obj.MeshId = BuildingMeshId;
-            obj.FirstIndex = m_Scene.Meshes[obj.MeshId].FirstIndex;
-            obj.FirstVertex = m_Scene.Meshes[obj.MeshId].FirstVertex;
-            m_Scene.Objects.push_back(obj);
-
-            // Add this building to our placed list
-            placedBuildings.push_back({X, Z, buildingRadius});
-            buildingsPlaced++;
         }
 
         // Add building instance object
         InstancedObjects InstObj;
         InstObj.ObjectAttribsOffset = 0;
-        InstObj.MeshInd = BuildingMeshId;
-        InstObj.NumObjects = static_cast<Uint32>(m_Scene.Objects.size());
+        InstObj.MeshInd             = BuildingMeshId;
+        InstObj.NumObjects          = static_cast<Uint32>(placedBuildings.size());
         m_Scene.ObjectInstances.push_back(InstObj);
 
+        // ========== AÑADE CÓDIGO PARA CREAR NAVES ESPACIALES ==========
+
+        // Número de naves espaciales a crear basado en la configuración de usuario
+        // 3. También mejoremos la distribución de naves espaciales
+        // Reemplaza esta sección para distribuir mejor las naves por toda la escena:
+
+        // ========== CÓDIGO MEJORADO PARA CREAR NAVES ESPACIALES ==========
+
+        // Número de naves espaciales a crear basado en la configuración de usuario
+        const int NumSpaceships = m_SpaceshipCount;
+
+        // Crea un nuevo punto de inicio para las naves espaciales en el buffer de objetos
+        Uint32 spaceshipObjectOffset = static_cast<Uint32>(m_Scene.Objects.size());
+
+        // Semilla para posicionamiento aleatorio (usando una semilla diferente a la de los edificios)
+        std::srand(567);
+
+        // Mejorada distribución para cubrir todo el cielo
+        // Dividimos el cielo en sectores para asegurarnos de que las naves cubran todo el espacio aéreo
+        const int SkyGridX         = 6;
+        const int SkyGridZ         = 6;
+        const int SkyGridY         = 3; // Tres niveles de altura
+        const int ShipsPerGridCell = NumSpaceships / (SkyGridX * SkyGridZ * SkyGridY) + 1;
+
+        std::vector<float3> shipCenters; // Para crear formaciones de naves alrededor de puntos centrales
+
+        // Crear formaciones/patrones aleatorios en todo el cielo
+        for (int gridX = 0; gridX < SkyGridX; gridX++)
+        {
+            for (int gridZ = 0; gridZ < SkyGridZ; gridZ++)
+            {
+                for (int gridY = 0; gridY < SkyGridY; gridY++)
+                {
+                    // Si decidimos crear una formación en esta celda (70% de probabilidad)
+                    if ((std::rand() % 100) < 70)
+                    {
+                        // Determinamos el centro de la formación
+                        float centerX = -120.0f + (240.0f / SkyGridX) * (gridX + 0.5f + ((std::rand() % 40) / 100.0f - 0.2f));
+                        float centerZ = -120.0f + (240.0f / SkyGridZ) * (gridZ + 0.5f + ((std::rand() % 40) / 100.0f - 0.2f));
+                        float centerY = 10.0f + (30.0f / SkyGridY) * (gridY + ((std::rand() % 60) / 100.0f));
+
+                        // Selecciona un tipo de formación para este grupo (0-3)
+                        int formationType = std::rand() % 4;
+
+                        // Guarda este centro de formación
+                        shipCenters.push_back({centerX, centerY, centerZ});
+
+                        // Número de naves en esta formación
+                        int shipsInFormation = ShipsPerGridCell + (std::rand() % 3) - 1; // Variación aleatoria
+
+                        // Parámetros de la formación
+                        float formationSpread;
+                        float formationHeight;
+                        float rotationVariation;
+                        bool  useCommonRotation = (std::rand() % 100) < 60; // 60% probabilidad
+                        float commonRotY        = (std::rand() % 100) / 100.0f * 2.0f * PI_F;
+
+                        switch (formationType)
+                        {
+                            case 0: // Enjambre compacto
+                                formationSpread   = 8.0f + (std::rand() % 100) / 100.0f * 7.0f;
+                                formationHeight   = 3.0f + (std::rand() % 100) / 100.0f * 3.0f;
+                                rotationVariation = 0.3f; // Variaciones pequeñas
+                                break;
+                            case 1: // Formación en V
+                                formationSpread   = 15.0f + (std::rand() % 100) / 100.0f * 10.0f;
+                                formationHeight   = 1.5f + (std::rand() % 100) / 100.0f * 2.0f;
+                                rotationVariation = 0.15f; // Poca variación
+                                break;
+                            case 2: // Formación circular
+                                formationSpread   = 12.0f + (std::rand() % 100) / 100.0f * 8.0f;
+                                formationHeight   = 4.0f + (std::rand() % 100) / 100.0f * 3.0f;
+                                rotationVariation = 0.2f;
+                                break;
+                            case 3: // Dispersa/caótica
+                            default:
+                                formationSpread   = 20.0f + (std::rand() % 100) / 100.0f * 15.0f;
+                                formationHeight   = 6.0f + (std::rand() % 100) / 100.0f * 4.0f;
+                                rotationVariation = 0.5f;  // Mayor variación
+                                useCommonRotation = false; // Siempre rotación aleatoria
+                                break;
+                        }
+
+                        // Crea las naves para esta formación
+                        for (int ship = 0; ship < shipsInFormation; ship++)
+                        {
+                            float shipX, shipY, shipZ;
+                            float rotX, rotY, rotZ;
+                            float Scale;
+
+                            // Posición basada en el tipo de formación
+                            if (formationType == 1)
+                            { // Formación en V
+                                float angle = PI_F * 0.2f + (ship * PI_F * 0.6f / shipsInFormation);
+                                float dist  = formationSpread * (0.3f + (ship % 3) * 0.23f);
+                                shipX       = centerX + dist * cos(angle);
+                                shipZ       = centerZ + dist * sin(angle);
+                                shipY       = centerY - std::abs(angle - PI_F * 0.5f) * 3.0f + ((std::rand() % 100) / 100.0f - 0.5f) * formationHeight;
+                            }
+                            else if (formationType == 2)
+                            { // Formación circular
+                                float angle = (ship * 2.0f * PI_F / shipsInFormation);
+                                float dist  = formationSpread * (0.8f + ((std::rand() % 40) / 100.0f));
+                                shipX       = centerX + dist * cos(angle);
+                                shipZ       = centerZ + dist * sin(angle);
+                                shipY       = centerY + ((std::rand() % 100) / 100.0f - 0.5f) * formationHeight;
+                            }
+                            else
+                            { // Formación dispersa o enjambre
+                                shipX = centerX + ((std::rand() % 200) / 100.0f - 1.0f) * formationSpread;
+                                shipZ = centerZ + ((std::rand() % 200) / 100.0f - 1.0f) * formationSpread;
+                                shipY = centerY + ((std::rand() % 200) / 100.0f - 1.0f) * formationHeight;
+                            }
+
+                            // Rotación basada en el tipo de formación
+                            if (useCommonRotation)
+                            {
+                                rotY = commonRotY + ((std::rand() % 100) / 100.0f - 0.5f) * rotationVariation;
+                            }
+                            else
+                            {
+                                rotY = (std::rand() % 100) / 100.0f * 2.0f * PI_F;
+                            }
+
+                            rotX = ((std::rand() % 100) / 100.0f - 0.5f) * rotationVariation * 0.6f;
+                            rotZ = ((std::rand() % 100) / 100.0f - 0.5f) * rotationVariation * 0.4f;
+
+                            // Escala ligeramente diferente para cada nave
+                            if (formationType == 0 || formationType == 1)
+                            {                                                 // Formaciones más ordenadas, tamaños más uniformes
+                                Scale = 1.0f + ((std::rand() % 60) / 100.0f); // 1.0-1.6
+                            }
+                            else
+                            {
+                                Scale = 0.8f + ((std::rand() % 120) / 100.0f); // 0.8-2.0 más variación
+                            }
+
+                            // Matriz de modelo para la nave
+                            float4x4 ModelMat = float4x4::RotationX(rotX) *
+                                float4x4::RotationY(rotY) *
+                                float4x4::RotationZ(rotZ) *
+                                float4x4::Scale(Scale) *
+                                float4x4::Translation(shipX, shipY, shipZ);
+
+                            // Material aleatorio
+                            Uint32 materialId = (ship % (SpaceshipMaterialRange.y - SpaceshipMaterialRange.x)) + SpaceshipMaterialRange.x;
+
+                            // Crea el objeto de la nave
+                            HLSL::ObjectAttribs obj;
+                            obj.ModelMat    = ModelMat.Transpose();
+                            obj.NormalMat   = obj.ModelMat;
+                            obj.MaterialId  = materialId;
+                            obj.MeshId      = SpaceshipMeshId;
+                            obj.FirstIndex  = m_Scene.Meshes[obj.MeshId].FirstIndex;
+                            obj.FirstVertex = m_Scene.Meshes[obj.MeshId].FirstVertex;
+                            m_Scene.Objects.push_back(obj);
+                        }
+                    }
+                }
+            }
+        }
+
+        // Si no hemos agregado suficientes naves, añadimos algunas más de forma individual
+        int currentShipCount = static_cast<int>(m_Scene.Objects.size() - spaceshipObjectOffset);
+        if (currentShipCount < NumSpaceships)
+        {
+            int remainingShips = NumSpaceships - currentShipCount;
+
+            for (int i = 0; i < remainingShips; i++)
+            {
+                // Posición completamente aleatoria
+                float angle  = (std::rand() % 100) / 100.0f * 2.0f * PI_F;
+                float radius = 20.0f + (std::rand() % 100) / 100.0f * 130.0f;
+                float X      = radius * cos(angle);
+                float Z      = radius * sin(angle);
+                float Y      = 8.0f + (std::rand() % 100) / 100.0f * 32.0f;
+
+                // Rotación aleatoria
+                float rotX = (std::rand() % 100) / 100.0f * 0.6f - 0.3f;
+                float rotY = (std::rand() % 100) / 100.0f * 2.0f * PI_F;
+                float rotZ = (std::rand() % 100) / 100.0f * 0.4f - 0.2f;
+
+                // Escala aleatoria
+                float Scale = 0.8f + (std::rand() % 100) / 100.0f * 2.2f;
+
+                // Matriz modelo
+                float4x4 ModelMat = float4x4::RotationX(rotX) *
+                    float4x4::RotationY(rotY) *
+                    float4x4::RotationZ(rotZ) *
+                    float4x4::Scale(Scale) *
+                    float4x4::Translation(X, Y, Z);
+
+                // Material aleatorio
+                Uint32 materialId = (i % (SpaceshipMaterialRange.y - SpaceshipMaterialRange.x)) + SpaceshipMaterialRange.x;
+
+                // Crea el objeto
+                HLSL::ObjectAttribs obj;
+                obj.ModelMat    = ModelMat.Transpose();
+                obj.NormalMat   = obj.ModelMat;
+                obj.MaterialId  = materialId;
+                obj.MeshId      = SpaceshipMeshId;
+                obj.FirstIndex  = m_Scene.Meshes[obj.MeshId].FirstIndex;
+                obj.FirstVertex = m_Scene.Meshes[obj.MeshId].FirstVertex;
+                m_Scene.Objects.push_back(obj);
+            }
+        }
+
+        // Obtén el número final de naves
+        int finalShipCount = static_cast<int>(m_Scene.Objects.size() - spaceshipObjectOffset);
+
+        // Añade el objeto de instancia para las naves espaciales
+        InstancedObjects SpaceshipInstObj;
+        SpaceshipInstObj.MeshInd             = SpaceshipMeshId;
+        SpaceshipInstObj.ObjectAttribsOffset = spaceshipObjectOffset;
+        SpaceshipInstObj.NumObjects          = finalShipCount;
+        m_Scene.ObjectInstances.push_back(SpaceshipInstObj);
+
+        // ======== FIN DEL CÓDIGO MEJORADO DE NAVES ESPACIALES ========
+
         // Create ground plane object (water)
-        InstObj.ObjectAttribsOffset = static_cast<Uint32>(m_Scene.Objects.size());
-        InstObj.MeshInd = PlaneMeshId;
+        InstancedObjects GroundInstObj;
+        GroundInstObj.ObjectAttribsOffset = static_cast<Uint32>(m_Scene.Objects.size());
+        GroundInstObj.MeshInd             = PlaneMeshId;
         {
             HLSL::ObjectAttribs obj;
             // Position the water level lower and make it larger to match expanded area
-            obj.ModelMat = (float4x4::Scale(80.f, 1.f, 80.f) * float4x4::Translation(0.f, -1.5f, 0.f)).Transpose();
-            obj.NormalMat = float3x3::Identity();
-            obj.MaterialId = GroundMaterial;
-            obj.MeshId = PlaneMeshId;
-            obj.FirstIndex = m_Scene.Meshes[obj.MeshId].FirstIndex;
+            obj.ModelMat    = (float4x4::Scale(80.f, 1.f, 80.f) * float4x4::Translation(0.f, -1.5f, 0.f)).Transpose();
+            obj.NormalMat   = float3x3::Identity();
+            obj.MaterialId  = GroundMaterial;
+            obj.MeshId      = PlaneMeshId;
+            obj.FirstIndex  = m_Scene.Meshes[obj.MeshId].FirstIndex;
             obj.FirstVertex = m_Scene.Meshes[obj.MeshId].FirstVertex;
             m_Scene.Objects.push_back(obj);
         }
-        InstObj.NumObjects = static_cast<Uint32>(m_Scene.Objects.size()) - InstObj.ObjectAttribsOffset;
-        m_Scene.ObjectInstances.push_back(InstObj);
+        GroundInstObj.NumObjects = static_cast<Uint32>(m_Scene.Objects.size()) - GroundInstObj.ObjectAttribsOffset;
+        m_Scene.ObjectInstances.push_back(GroundInstObj);
     }
 
     void Tutorial22_HybridRendering::CreateSceneAccelStructs()
@@ -670,39 +965,326 @@ namespace Diligent
         m_pImmediateContext->BuildTLAS(Attribs);
     }
 
+    // 4. Finalmente, vamos a mejorar la geometría de las naves espaciales
+    // Reemplaza completamente la función CreateSpaceshipMesh con esta versión mejorada:
+
+    Tutorial22_HybridRendering::Mesh Tutorial22_HybridRendering::CreateSpaceshipMesh(IRenderDevice* pDevice, float2 UVScale)
+    {
+        Mesh SpaceshipMesh;
+        SpaceshipMesh.Name = "Spaceship";
+
+        // Definimos estos valores fuera de los bloques para accesibilidad
+        const int NumRadialSegments   = 24; // Aumentamos la resolución para la forma circular
+        const int NumVerticalSegments = 4;  // Segmentos verticales para mejor curvatura
+
+        // Calculamos el número total de vértices
+        // - 1 vértice superior (cúpula central)
+        // - NumRadialSegments * NumVerticalSegments vértices para el cuerpo principal
+        // - NumRadialSegments vértices para el borde inferior
+        // - 1 vértice inferior central
+        // - NumRadialSegments vértices para la estructura inferior (cañones/propulsores)
+        const int TotalVertices = 1 + (NumRadialSegments * NumVerticalSegments) + NumRadialSegments + 1 + NumRadialSegments;
+
+        {
+            struct SpaceshipVertex // Alias for HLSL::Vertex
+            {
+                float3 pos;
+                float3 norm;
+                float2 uv;
+            };
+            static_assert(sizeof(SpaceshipVertex) == sizeof(HLSL::Vertex), "Vertex size mismatch");
+
+            // Parámetros para forma más interesante
+            const float TopRadius      = 0.15f;                  // Radio de la cúpula superior
+            const float MainDiskRadius = 1.0f;                   // Radio del disco principal
+            const float BottomRadius   = 0.85f * MainDiskRadius; // Radio de la base inferior
+            const float ShipHeight     = 0.5f;                   // Altura total de la nave
+            const float DomeHeight     = 0.35f * ShipHeight;     // Altura de la cúpula
+            const float BottomDepth    = -0.2f * ShipHeight;     // Profundidad de la parte inferior
+            const float EngineLength   = 0.3f * MainDiskRadius;  // Longitud de los "motores" en la parte inferior
+
+            // Curvatura del disco principal
+            auto GetDiscHeight = [DomeHeight, BottomDepth, MainDiskRadius](float r, float segmentRatio) {
+                // Perfil curvo para el cuerpo de la nave
+                float normalizedR = r / MainDiskRadius; // Radio normalizado (0-1)
+                // Función que da forma al perfil: mezcla con suavidad entre cúpula y base
+                float topHeight     = DomeHeight * (1.0f - pow(normalizedR, 1.5f));
+                float bottomContrib = BottomDepth * pow(normalizedR, 3.0f);
+
+                // Mezcla con segmentRatio para curvar a lo largo de los segmentos verticales
+                return topHeight * (1.0f - segmentRatio) + bottomContrib * segmentRatio;
+            };
+
+            std::vector<SpaceshipVertex> Vertices(TotalVertices);
+            int                          vertexIndex = 0;
+
+            // 1. Vértice en el centro de la cúpula
+            Vertices[vertexIndex++] = {
+                float3{0.0f, DomeHeight, 0.0f},
+                float3{0.0f, 1.0f, 0.0f},
+                float2{0.5f, 0.5f}};
+
+            // 2. Vértices para el cuerpo principal en forma de disco curvo
+            for (int vseg = 0; vseg < NumVerticalSegments; vseg++)
+            {
+                float segmentRatio = static_cast<float>(vseg) / (NumVerticalSegments - 1);
+                float segmentRadius;
+
+                // El primer segmento conecta con la cúpula, el último con el borde inferior
+                if (vseg == 0)
+                {
+                    segmentRadius = TopRadius + (MainDiskRadius - TopRadius) * 0.4f;
+                }
+                else if (vseg == NumVerticalSegments - 1)
+                {
+                    segmentRadius = MainDiskRadius;
+                }
+                else
+                {
+                    segmentRadius = TopRadius + (MainDiskRadius - TopRadius) * (0.4f + 0.6f * segmentRatio);
+                }
+
+                for (int rseg = 0; rseg < NumRadialSegments; rseg++)
+                {
+                    float angle = 2.0f * PI_F * rseg / NumRadialSegments;
+                    float x     = segmentRadius * cos(angle);
+                    float z     = segmentRadius * sin(angle);
+
+                    // Altura basada en la curva del perfil
+                    float y = GetDiscHeight(segmentRadius, segmentRatio);
+
+                    // Calcula normal - apuntando hacia afuera y arriba/abajo dependiendo de la curvatura
+                    float3 normal;
+                    if (vseg == 0)
+                    {
+                        // Cerca de la cúpula, normal más hacia arriba
+                        normal = normalize(float3{x * 0.3f, 0.7f, z * 0.3f});
+                    }
+                    else if (vseg == NumVerticalSegments - 1)
+                    {
+                        // Borde exterior, normal más horizontal
+                        normal = normalize(float3{x, 0.1f, z});
+                    }
+                    else
+                    {
+                        // En medio, normal combina componentes
+                        float upFactor = 0.5f * (1.0f - segmentRatio);
+                        normal         = normalize(float3{x, upFactor, z});
+                    }
+
+                    // Coordenadas UV basadas en la posición
+                    float u = 0.5f + 0.5f * cos(angle) * segmentRadius / MainDiskRadius;
+                    float v = 0.5f + 0.5f * sin(angle) * segmentRadius / MainDiskRadius;
+
+                    Vertices[vertexIndex++] = {
+                        float3{x, y, z},
+                        normal,
+                        float2{u, v}};
+                }
+            }
+
+            // 3. Vértices para el borde inferior del disco
+            for (int rseg = 0; rseg < NumRadialSegments; rseg++)
+            {
+                float angle = 2.0f * PI_F * rseg / NumRadialSegments;
+                float x     = BottomRadius * cos(angle);
+                float z     = BottomRadius * sin(angle);
+                float y     = BottomDepth;
+
+                // Normal apuntando ligeramente hacia abajo
+                float3 normal = normalize(float3{x * 0.7f, -0.3f, z * 0.7f});
+
+                // UV basado en la posición pero con diferente mapeo para la base
+                float u = 0.5f + 0.4f * cos(angle);
+                float v = 0.5f + 0.4f * sin(angle);
+
+                Vertices[vertexIndex++] = {
+                    float3{x, y, z},
+                    normal,
+                    float2{u, v}};
+            }
+
+            // 4. Vértice central en la base inferior
+            Vertices[vertexIndex++] = {
+                float3{0.0f, BottomDepth, 0.0f},
+                float3{0.0f, -1.0f, 0.0f},
+                float2{0.5f, 0.5f}};
+
+            // 5. Vértices para los "propulsores/cañones" en la parte inferior (detalles adicionales)
+            for (int rseg = 0; rseg < NumRadialSegments; rseg++)
+            {
+                // Solo añadir propulsores en puntos equidistantes (cada 4 segmentos)
+                if (rseg % 4 != 0)
+                {
+                    // Para segmentos que no tienen propulsor, simplemente duplicamos el vértice del borde
+                    Vertices[vertexIndex++] = Vertices[1 + (NumVerticalSegments - 1) * NumRadialSegments + rseg];
+                    continue;
+                }
+
+                float angle = 2.0f * PI_F * rseg / NumRadialSegments;
+                float x     = BottomRadius * 0.9f * cos(angle);
+                float z     = BottomRadius * 0.9f * sin(angle);
+                float y     = BottomDepth - EngineLength;
+
+                // Normal apuntando hacia abajo
+                float3 normal = normalize(float3{0.0f, -1.0f, 0.0f});
+
+                // UV especial para el motor
+                float u = 0.5f + 0.2f * cos(angle);
+                float v = 0.5f + 0.2f * sin(angle);
+
+                Vertices[vertexIndex++] = {
+                    float3{x, y, z},
+                    normal,
+                    float2{u, v}};
+            }
+
+            SpaceshipMesh.NumVertices = static_cast<Uint32>(Vertices.size());
+
+            BufferDesc VBDesc;
+            VBDesc.Name              = "Spaceship vertex buffer";
+            VBDesc.Usage             = USAGE_IMMUTABLE;
+            VBDesc.BindFlags         = BIND_VERTEX_BUFFER | BIND_SHADER_RESOURCE | BIND_RAY_TRACING;
+            VBDesc.Size              = static_cast<Uint64>(Vertices.size()) * sizeof(Vertices[0]);
+            VBDesc.Mode              = BUFFER_MODE_STRUCTURED;
+            VBDesc.ElementByteStride = sizeof(Vertices[0]);
+            BufferData VBData{Vertices.data(), VBDesc.Size};
+            pDevice->CreateBuffer(VBDesc, &VBData, &SpaceshipMesh.VertexBuffer);
+        }
+
+        {
+            // Calculamos el número de índices necesarios para todos los triángulos
+            // - Cúpula superior: NumRadialSegments triángulos
+            // - Cuerpo principal: 2 triángulos * NumRadialSegments * (NumVerticalSegments-1)
+            // - Base inferior: NumRadialSegments triángulos
+            // - Propulsores: 2 triángulos * (NumRadialSegments/4) [solo donde hay propulsores]
+
+            const int NumCupTriangles    = NumRadialSegments;
+            const int NumBodyTriangles   = 2 * NumRadialSegments * (NumVerticalSegments - 1);
+            const int NumBottomTriangles = NumRadialSegments;
+            const int NumEngineTriangles = 2 * (NumRadialSegments / 4);
+
+            const int TotalTriangles = NumCupTriangles + NumBodyTriangles + NumBottomTriangles + NumEngineTriangles;
+            const int TotalIndices   = TotalTriangles * 3;
+
+            std::vector<Uint32> Indices(TotalIndices);
+            int                 indexCount = 0;
+
+            // 1. Triángulos de la cúpula superior
+            for (int rseg = 0; rseg < NumRadialSegments; rseg++)
+            {
+                Indices[indexCount++] = 0;                                  // Vértice central superior
+                Indices[indexCount++] = 1 + rseg;                           // Primer anillo
+                Indices[indexCount++] = 1 + (rseg + 1) % NumRadialSegments; // Siguiente en el anillo
+            }
+
+            // 2. Triángulos del cuerpo principal (anillos verticales)
+            for (int vseg = 0; vseg < NumVerticalSegments - 1; vseg++)
+            {
+                int currentRing = 1 + vseg * NumRadialSegments;
+                int nextRing    = currentRing + NumRadialSegments;
+
+                for (int rseg = 0; rseg < NumRadialSegments; rseg++)
+                {
+                    int current      = currentRing + rseg;
+                    int next         = currentRing + (rseg + 1) % NumRadialSegments;
+                    int nextLower    = nextRing + (rseg + 1) % NumRadialSegments;
+                    int currentLower = nextRing + rseg;
+
+                    // Dos triángulos por cada cuadrilátero
+                    Indices[indexCount++] = current;
+                    Indices[indexCount++] = currentLower;
+                    Indices[indexCount++] = next;
+
+                    Indices[indexCount++] = next;
+                    Indices[indexCount++] = currentLower;
+                    Indices[indexCount++] = nextLower;
+                }
+            }
+
+            // 3. Triángulos de la base inferior
+            int baseRingStart       = 1 + (NumVerticalSegments - 1) * NumRadialSegments;
+            int centralBottomVertex = baseRingStart + NumRadialSegments;
+
+            for (int rseg = 0; rseg < NumRadialSegments; rseg++)
+            {
+                Indices[indexCount++] = centralBottomVertex; // Vértice central inferior
+                Indices[indexCount++] = baseRingStart + (rseg + 1) % NumRadialSegments;
+                Indices[indexCount++] = baseRingStart + rseg;
+            }
+
+            // 4. Triángulos para los propulsores/cañones
+            int engineRingStart = centralBottomVertex + 1;
+
+            for (int rseg = 0; rseg < NumRadialSegments; rseg += 4)
+            {
+                // Solo construimos propulsores en posiciones específicas (cada 4 segmentos)
+                int baseIndex       = baseRingStart + rseg;
+                int nextBaseIndex   = baseRingStart + (rseg + 1) % NumRadialSegments;
+                int engineIndex     = engineRingStart + rseg;
+                int nextEngineIndex = engineRingStart + (rseg + 1) % NumRadialSegments;
+
+                // Triángulo lateral izquierdo del propulsor
+                Indices[indexCount++] = baseIndex;
+                Indices[indexCount++] = engineIndex;
+                Indices[indexCount++] = nextBaseIndex;
+
+                // Triángulo lateral derecho del propulsor
+                Indices[indexCount++] = nextBaseIndex;
+                Indices[indexCount++] = engineIndex;
+                Indices[indexCount++] = nextEngineIndex;
+            }
+
+            SpaceshipMesh.NumIndices = static_cast<Uint32>(Indices.size());
+
+            BufferDesc IBDesc;
+            IBDesc.Name              = "Spaceship index buffer";
+            IBDesc.BindFlags         = BIND_INDEX_BUFFER | BIND_SHADER_RESOURCE | BIND_RAY_TRACING;
+            IBDesc.Size              = static_cast<Uint64>(Indices.size()) * sizeof(Indices[0]);
+            IBDesc.Mode              = BUFFER_MODE_STRUCTURED;
+            IBDesc.ElementByteStride = sizeof(Indices[0]);
+            BufferData IBData{Indices.data(), IBDesc.Size};
+            pDevice->CreateBuffer(IBDesc, &IBData, &SpaceshipMesh.IndexBuffer);
+        }
+
+        return SpaceshipMesh;
+    }
+
+    // 4. Función RecreateSceneObjects completa modificada
     void Tutorial22_HybridRendering::RecreateSceneObjects()
     {
-        // First, save the current material ranges and ground material
-        const auto CubeMaterialRange = m_Scene.CubeMaterialRange;
-        const auto BuildingMaterialRange = m_Scene.BuildingMaterialRange;
-        const auto GroundMaterial = m_Scene.GroundMaterial;
+        // Primero, guarda los rangos de materiales actuales y el material del suelo
+        const auto CubeMaterialRange      = m_Scene.CubeMaterialRange;
+        const auto BuildingMaterialRange  = m_Scene.BuildingMaterialRange;
+        const auto SpaceshipMaterialRange = m_Scene.SpaceshipMaterialRange;
+        const auto GroundMaterial         = m_Scene.GroundMaterial;
 
-        // Fully release all existing bindings and resources that will be recreated
+        // Libera completamente todas las vinculaciones y recursos existentes que serán recreados
         m_RasterizationSRB.Release();
         m_RayTracingSceneSRB.Release();
 
-        // Release all acceleration structures
+        // Libera todas las estructuras de aceleración
         m_Scene.TLAS.Release();
         m_Scene.TLASInstancesBuffer.Release();
         m_Scene.TLASScratchBuffer.Release();
 
-        // Release object buffers that will be recreated
+        // Libera los buffers de objetos que serán recreados
         m_Scene.ObjectAttribsBuffer.Release();
 
-        // Clear existing objects but preserve meshes
+        // Limpia los objetos existentes pero preserva las mallas
         m_Scene.ClearObjects();
 
-        // Recreate objects from scratch
-        CreateSceneObjects(CubeMaterialRange, BuildingMaterialRange, GroundMaterial);
+        // Recrea los objetos desde cero
+        CreateSceneObjects(CubeMaterialRange, BuildingMaterialRange, SpaceshipMaterialRange, GroundMaterial);
 
         // Create buffer for object attribs - we need to do this here explicitly
         {
             BufferDesc BuffDesc;
-            BuffDesc.Name = "Object attribs buffer";
-            BuffDesc.Usage = USAGE_DEFAULT;
-            BuffDesc.BindFlags = BIND_SHADER_RESOURCE;
-            BuffDesc.Size = static_cast<Uint64>(sizeof(m_Scene.Objects[0]) * m_Scene.Objects.size());
-            BuffDesc.Mode = BUFFER_MODE_STRUCTURED;
+            BuffDesc.Name              = "Object attribs buffer";
+            BuffDesc.Usage             = USAGE_DEFAULT;
+            BuffDesc.BindFlags         = BIND_SHADER_RESOURCE;
+            BuffDesc.Size              = static_cast<Uint64>(sizeof(m_Scene.Objects[0]) * m_Scene.Objects.size());
+            BuffDesc.Mode              = BUFFER_MODE_STRUCTURED;
             BuffDesc.ElementByteStride = sizeof(m_Scene.Objects[0]);
             m_pDevice->CreateBuffer(BuffDesc, nullptr, &m_Scene.ObjectAttribsBuffer);
         }
@@ -722,8 +1304,8 @@ namespace Diligent
 
         // Bind textures
         {
-            const Uint32 NumTextures = static_cast<Uint32>(m_Scene.Textures.size());
-            std::vector<IDeviceObject *> ppTextures(NumTextures);
+            const Uint32                NumTextures = static_cast<Uint32>(m_Scene.Textures.size());
+            std::vector<IDeviceObject*> ppTextures(NumTextures);
             for (Uint32 i = 0; i < NumTextures; ++i)
                 ppTextures[i] = m_Scene.Textures[i]->GetDefaultView(TEXTURE_VIEW_SHADER_RESOURCE);
             m_RasterizationSRB->GetVariableByName(SHADER_TYPE_PIXEL, "g_Textures")->SetArray(ppTextures.data(), 0, NumTextures);
@@ -731,8 +1313,8 @@ namespace Diligent
 
         // Bind samplers
         {
-            const Uint32 NumSamplers = static_cast<Uint32>(m_Scene.Samplers.size());
-            std::vector<IDeviceObject *> ppSamplers(NumSamplers);
+            const Uint32                NumSamplers = static_cast<Uint32>(m_Scene.Samplers.size());
+            std::vector<IDeviceObject*> ppSamplers(NumSamplers);
             for (Uint32 i = 0; i < NumSamplers; ++i)
                 ppSamplers[i] = m_Scene.Samplers[i];
             m_RasterizationSRB->GetVariableByName(SHADER_TYPE_PIXEL, "g_Samplers")->SetArray(ppSamplers.data(), 0, NumSamplers);
@@ -750,8 +1332,8 @@ namespace Diligent
 
         // Bind material textures
         {
-            const Uint32 NumTextures = static_cast<Uint32>(m_Scene.Textures.size());
-            std::vector<IDeviceObject *> ppTextures(NumTextures);
+            const Uint32                NumTextures = static_cast<Uint32>(m_Scene.Textures.size());
+            std::vector<IDeviceObject*> ppTextures(NumTextures);
             for (Uint32 i = 0; i < NumTextures; ++i)
                 ppTextures[i] = m_Scene.Textures[i]->GetDefaultView(TEXTURE_VIEW_SHADER_RESOURCE);
             m_RayTracingSceneSRB->GetVariableByName(SHADER_TYPE_COMPUTE, "g_Textures")->SetArray(ppTextures.data(), 0, NumTextures);
@@ -759,34 +1341,37 @@ namespace Diligent
 
         // Bind samplers
         {
-            const Uint32 NumSamplers = static_cast<Uint32>(m_Scene.Samplers.size());
-            std::vector<IDeviceObject *> ppSamplers(NumSamplers);
+            const Uint32                NumSamplers = static_cast<Uint32>(m_Scene.Samplers.size());
+            std::vector<IDeviceObject*> ppSamplers(NumSamplers);
             for (Uint32 i = 0; i < NumSamplers; ++i)
                 ppSamplers[i] = m_Scene.Samplers[i];
             m_RayTracingSceneSRB->GetVariableByName(SHADER_TYPE_COMPUTE, "g_Samplers")->SetArray(ppSamplers.data(), 0, NumSamplers);
         }
     }
 
+    // 3. Función CreateScene completa modificada
     void Tutorial22_HybridRendering::CreateScene()
     {
-        uint2 CubeMaterialRange;
-        uint2 BuildingMaterialRange;
-        Uint32 GroundMaterial;
+        uint2                              CubeMaterialRange;
+        uint2                              BuildingMaterialRange;
+        uint2                              SpaceshipMaterialRange;
+        Uint32                             GroundMaterial;
         std::vector<HLSL::MaterialAttribs> Materials;
         CreateSceneMaterials(CubeMaterialRange, GroundMaterial, Materials);
-        CreateBuildingMaterials(BuildingMaterialRange, Materials, 0); // Use sampler index 0
-        CreateSceneObjects(CubeMaterialRange, BuildingMaterialRange, GroundMaterial);
+        CreateBuildingMaterials(BuildingMaterialRange, Materials, 0);   // Use sampler index 0
+        CreateSpaceshipMaterials(SpaceshipMaterialRange, Materials, 0); // Use sampler index 0
+        CreateSceneObjects(CubeMaterialRange, BuildingMaterialRange, SpaceshipMaterialRange, GroundMaterial);
         CreateSceneAccelStructs();
 
         // Create buffer for object attribs
         m_Scene.ObjectAttribsBuffer.Release(); // Make sure to release before creating a new one
         {
             BufferDesc BuffDesc;
-            BuffDesc.Name = "Object attribs buffer";
-            BuffDesc.Usage = USAGE_DEFAULT;
-            BuffDesc.BindFlags = BIND_SHADER_RESOURCE;
-            BuffDesc.Size = static_cast<Uint64>(sizeof(m_Scene.Objects[0]) * m_Scene.Objects.size());
-            BuffDesc.Mode = BUFFER_MODE_STRUCTURED;
+            BuffDesc.Name              = "Object attribs buffer";
+            BuffDesc.Usage             = USAGE_DEFAULT;
+            BuffDesc.BindFlags         = BIND_SHADER_RESOURCE;
+            BuffDesc.Size              = static_cast<Uint64>(sizeof(m_Scene.Objects[0]) * m_Scene.Objects.size());
+            BuffDesc.Mode              = BUFFER_MODE_STRUCTURED;
             BuffDesc.ElementByteStride = sizeof(m_Scene.Objects[0]);
             m_pDevice->CreateBuffer(BuffDesc, nullptr, &m_Scene.ObjectAttribsBuffer);
         }
@@ -795,11 +1380,11 @@ namespace Diligent
         m_Scene.MaterialAttribsBuffer.Release(); // Make sure to release before creating a new one
         {
             BufferDesc BuffDesc;
-            BuffDesc.Name = "Material attribs buffer";
-            BuffDesc.Usage = USAGE_DEFAULT;
-            BuffDesc.BindFlags = BIND_SHADER_RESOURCE;
-            BuffDesc.Size = static_cast<Uint64>(sizeof(Materials[0]) * Materials.size());
-            BuffDesc.Mode = BUFFER_MODE_STRUCTURED;
+            BuffDesc.Name              = "Material attribs buffer";
+            BuffDesc.Usage             = USAGE_DEFAULT;
+            BuffDesc.BindFlags         = BIND_SHADER_RESOURCE;
+            BuffDesc.Size              = static_cast<Uint64>(sizeof(Materials[0]) * Materials.size());
+            BuffDesc.Mode              = BUFFER_MODE_STRUCTURED;
             BuffDesc.ElementByteStride = sizeof(Materials[0]);
 
             BufferData BuffData{Materials.data(), BuffDesc.Size};
@@ -810,10 +1395,10 @@ namespace Diligent
         m_Scene.ObjectConstants.Release(); // Make sure to release before creating a new one
         {
             BufferDesc BuffDesc;
-            BuffDesc.Name = "Global constants buffer";
-            BuffDesc.Usage = USAGE_DYNAMIC;
-            BuffDesc.BindFlags = BIND_UNIFORM_BUFFER;
-            BuffDesc.Size = sizeof(HLSL::ObjectConstants);
+            BuffDesc.Name           = "Global constants buffer";
+            BuffDesc.Usage          = USAGE_DYNAMIC;
+            BuffDesc.BindFlags      = BIND_UNIFORM_BUFFER;
+            BuffDesc.Size           = sizeof(HLSL::ObjectConstants);
             BuffDesc.CPUAccessFlags = CPU_ACCESS_WRITE;
             m_pDevice->CreateBuffer(BuffDesc, nullptr, &m_Scene.ObjectConstants);
         }
@@ -1140,12 +1725,12 @@ namespace Diligent
             const float4x4 ViewProj = m_Camera.GetViewMatrix() * m_Camera.GetProjMatrix();
 
             HLSL::GlobalConstants GConst;
-            GConst.ViewProj = ViewProj.Transpose();
-            GConst.ViewProjInv = ViewProj.Inverse().Transpose();
-            GConst.LightDir = normalize(-m_LightDir);
-            GConst.CameraPos = float4(m_Camera.GetPos(), 0.f);
-            GConst.DrawMode = m_DrawMode;
-            GConst.MaxRayLength = 100.f;
+            GConst.ViewProj     = ViewProj.Transpose();
+            GConst.ViewProjInv  = ViewProj.Inverse().Transpose();
+            GConst.LightDir     = normalize(-m_LightDir);
+            GConst.CameraPos    = float4(m_Camera.GetPos(), 0.f);
+            GConst.DrawMode     = m_DrawMode;
+            GConst.MaxRayLength = 300.f; // MODIFICADO: aumentado de 100.f a 300.f para permitir mayor distancia de renderizado
             GConst.AmbientLight = 0.1f;
             m_pImmediateContext->UpdateBuffer(m_Constants, 0, static_cast<Uint32>(sizeof(GConst)), &GConst, RESOURCE_STATE_TRANSITION_MODE_TRANSITION);
 
@@ -1244,7 +1829,7 @@ namespace Diligent
         // Restrict camera movement
         float3 Pos = m_Camera.GetPos();
         const float3 MinXYZ{-75.f, 0.1f, -75.f};
-        const float3 MaxXYZ{+75.f, +6.f, 75.f};
+        const float3 MaxXYZ{+75.f, +20.f, 75.f};
         if (Pos.x < MinXYZ.x || Pos.y < MinXYZ.y || Pos.z < MinXYZ.z ||
             Pos.x > MaxXYZ.x || Pos.y > MaxXYZ.y || Pos.z > MaxXYZ.z)
         {
@@ -1330,6 +1915,7 @@ namespace Diligent
         m_RayTracingScreenSRB->GetVariableByName(SHADER_TYPE_COMPUTE, "g_GBuffer_Normal")->Set(m_GBuffer.Normal->GetDefaultView(TEXTURE_VIEW_SHADER_RESOURCE));
     }
 
+    // 5. Función UpdateUI completa modificada
     void Tutorial22_HybridRendering::UpdateUI()
     {
         ImGui::SetNextWindowPos(ImVec2(10, 10), ImGuiCond_FirstUseEver);
@@ -1367,12 +1953,31 @@ namespace Diligent
                     ImGui::SetTooltip("Controla el número total de edificios");
 
                 int PrevBuildingCount = m_BuildingCount;
-                int BuildingCountInt = m_BuildingCount;
+                int BuildingCountInt  = m_BuildingCount;
                 ImGui::SliderInt("##BuildingCount", &BuildingCountInt, 20, 500);
                 m_BuildingCount = BuildingCountInt;
 
                 // If building count changed, mark for recreation
                 if (PrevBuildingCount != m_BuildingCount)
+                {
+                    m_NeedRecreateScene = true;
+                }
+            }
+
+            // Spaceship Count slider with tooltip (NUEVA SECCIÓN)
+            {
+                ImGui::Separator();
+                ImGui::TextDisabled("Spaceship Count");
+                if (ImGui::IsItemHovered())
+                    ImGui::SetTooltip("Controla el número total de naves espaciales");
+
+                int PrevSpaceshipCount = m_SpaceshipCount;
+                int SpaceshipCountInt  = m_SpaceshipCount;
+                ImGui::SliderInt("##SpaceshipCount", &SpaceshipCountInt, 50, 500);
+                m_SpaceshipCount = SpaceshipCountInt;
+
+                // If spaceship count changed, mark for recreation
+                if (PrevSpaceshipCount != m_SpaceshipCount)
                 {
                     m_NeedRecreateScene = true;
                 }
@@ -1387,7 +1992,7 @@ namespace Diligent
                 if (m_LightDir.y > -0.06f)
                 {
                     m_LightDir.y = -0.06f;
-                    m_LightDir = normalize(m_LightDir);
+                    m_LightDir   = normalize(m_LightDir);
                 }
             }
         }
