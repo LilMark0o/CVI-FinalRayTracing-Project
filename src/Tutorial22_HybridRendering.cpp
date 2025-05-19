@@ -9,6 +9,7 @@
 #include "../imGuIZMO.quat/imGuIZMO.h"
 #include "Align.hpp"
 #include <cmath>
+#include <chrono>
 
 namespace Diligent
 {
@@ -111,6 +112,12 @@ namespace Diligent
         Mesh PlaneMesh;
         PlaneMesh.Name = "Ground";
 
+        // Crear una malla más densa para las olas (32x32 en lugar de 2x2)
+        const int GridSize = 32;
+        const int NumVertices = (GridSize + 1) * (GridSize + 1);
+        const int NumTriangles = GridSize * GridSize * 2;
+        const int NumIndices = NumTriangles * 3;
+
         {
             struct PlaneVertex // Alias for HLSL::Vertex
             {
@@ -120,39 +127,79 @@ namespace Diligent
             };
             static_assert(sizeof(PlaneVertex) == sizeof(HLSL::Vertex), "Vertex size mismatch");
 
-            // clang-format off
-        const PlaneVertex Vertices[] = 
-        {
-            {float3{-1, 0, -1}, float3{0, 1, 0}, float2{0,         0        }},
-            {float3{ 1, 0, -1}, float3{0, 1, 0}, float2{UVScale.x, 0        }},
-            {float3{-1, 0,  1}, float3{0, 1, 0}, float2{0,         UVScale.y}},
-            {float3{ 1, 0,  1}, float3{0, 1, 0}, float2{UVScale.x, UVScale.y}}
-        };
-            // clang-format on
-            PlaneMesh.NumVertices = _countof(Vertices);
+            std::vector<PlaneVertex> Vertices(NumVertices);
+
+            // Generar vértices en una cuadrícula
+            for (int z = 0; z <= GridSize; z++)
+            {
+                for (int x = 0; x <= GridSize; x++)
+                {
+                    int index = z * (GridSize + 1) + x;
+
+                    // Posición normalizada de -1 a 1
+                    float fx = (float)x / (float)GridSize * 2.0f - 1.0f;
+                    float fz = (float)z / (float)GridSize * 2.0f - 1.0f;
+
+                    // Coordenadas UV escaladas
+                    float u = (float)x / (float)GridSize * UVScale.x;
+                    float v = (float)z / (float)GridSize * UVScale.y;
+
+                    Vertices[index] = {
+                        float3{fx, 0.0f, fz},     // Posición (Y será modificada por olas en el shader)
+                        float3{0.0f, 1.0f, 0.0f}, // Normal inicial hacia arriba
+                        float2{u, v}              // Coordenadas UV
+                    };
+                }
+            }
+
+            PlaneMesh.NumVertices = NumVertices;
 
             BufferDesc VBDesc;
             VBDesc.Name = "Plane vertex buffer";
             VBDesc.Usage = USAGE_IMMUTABLE;
             VBDesc.BindFlags = BIND_VERTEX_BUFFER | BIND_SHADER_RESOURCE | BIND_RAY_TRACING;
-            VBDesc.Size = sizeof(Vertices);
+            VBDesc.Size = sizeof(PlaneVertex) * NumVertices;
             VBDesc.Mode = BUFFER_MODE_STRUCTURED;
-            VBDesc.ElementByteStride = sizeof(Vertices[0]);
-            BufferData VBData{Vertices, VBDesc.Size};
+            VBDesc.ElementByteStride = sizeof(PlaneVertex);
+            BufferData VBData{Vertices.data(), VBDesc.Size};
             pDevice->CreateBuffer(VBDesc, &VBData, &PlaneMesh.VertexBuffer);
         }
 
         {
-            const Uint32 Indices[] = {0, 2, 3, 3, 1, 0};
-            PlaneMesh.NumIndices = _countof(Indices);
+            std::vector<Uint32> Indices(NumIndices);
+            int indexCount = 0;
+
+            // Generar triángulos para la cuadrícula
+            for (int z = 0; z < GridSize; z++)
+            {
+                for (int x = 0; x < GridSize; x++)
+                {
+                    int topLeft = z * (GridSize + 1) + x;
+                    int topRight = topLeft + 1;
+                    int bottomLeft = (z + 1) * (GridSize + 1) + x;
+                    int bottomRight = bottomLeft + 1;
+
+                    // Primer triángulo (superior izquierdo)
+                    Indices[indexCount++] = topLeft;
+                    Indices[indexCount++] = bottomLeft;
+                    Indices[indexCount++] = topRight;
+
+                    // Segundo triángulo (inferior derecho)
+                    Indices[indexCount++] = topRight;
+                    Indices[indexCount++] = bottomLeft;
+                    Indices[indexCount++] = bottomRight;
+                }
+            }
+
+            PlaneMesh.NumIndices = NumIndices;
 
             BufferDesc IBDesc;
             IBDesc.Name = "Plane index buffer";
             IBDesc.BindFlags = BIND_INDEX_BUFFER | BIND_SHADER_RESOURCE | BIND_RAY_TRACING;
-            IBDesc.Size = sizeof(Indices);
+            IBDesc.Size = sizeof(Uint32) * NumIndices;
             IBDesc.Mode = BUFFER_MODE_STRUCTURED;
-            IBDesc.ElementByteStride = sizeof(Indices[0]);
-            BufferData IBData{Indices, IBDesc.Size};
+            IBDesc.ElementByteStride = sizeof(Uint32);
+            BufferData IBData{Indices.data(), IBDesc.Size};
             pDevice->CreateBuffer(IBDesc, &IBData, &PlaneMesh.IndexBuffer);
         }
 
@@ -1396,7 +1443,21 @@ namespace Diligent
             ShaderCI.EntryPoint = "main";
             ShaderCI.Desc.Name = "Rasterization VS";
             ShaderCI.FilePath = "Rasterization.vsh";
-            m_pDevice->CreateShader(ShaderCI, &pVS);
+
+            try
+            {
+                m_pDevice->CreateShader(ShaderCI, &pVS);
+                if (!pVS)
+                {
+                    LOG_ERROR("Failed to create vertex shader");
+                    return;
+                }
+            }
+            catch (const std::exception &e)
+            {
+                LOG_ERROR("Exception creating vertex shader: ", e.what());
+                return;
+            }
         }
 
         RefCntAutoPtr<IShader> pPS;
@@ -1405,7 +1466,21 @@ namespace Diligent
             ShaderCI.EntryPoint = "main";
             ShaderCI.Desc.Name = "Rasterization PS";
             ShaderCI.FilePath = "Rasterization.psh";
-            m_pDevice->CreateShader(ShaderCI, &pPS);
+
+            try
+            {
+                m_pDevice->CreateShader(ShaderCI, &pPS);
+                if (!pPS)
+                {
+                    LOG_ERROR("Failed to create pixel shader");
+                    return;
+                }
+            }
+            catch (const std::exception &e)
+            {
+                LOG_ERROR("Exception creating pixel shader: ", e.what());
+                return;
+            }
         }
 
         PSOCreateInfo.pVS = pVS;
@@ -1423,7 +1498,20 @@ namespace Diligent
         PSOCreateInfo.PSODesc.ResourceLayout.DefaultVariableType = SHADER_RESOURCE_VARIABLE_TYPE_MUTABLE;
         PSOCreateInfo.PSODesc.ResourceLayout.DefaultVariableMergeStages = SHADER_TYPE_VERTEX | SHADER_TYPE_PIXEL;
 
-        m_pDevice->CreateGraphicsPipelineState(PSOCreateInfo, &m_RasterizationPSO);
+        try
+        {
+            m_pDevice->CreateGraphicsPipelineState(PSOCreateInfo, &m_RasterizationPSO);
+            if (!m_RasterizationPSO)
+            {
+                LOG_ERROR("Failed to create graphics pipeline state");
+                return;
+            }
+        }
+        catch (const std::exception &e)
+        {
+            LOG_ERROR("Exception creating graphics pipeline state: ", e.what());
+            return;
+        }
 
         m_RasterizationPSO->CreateShaderResourceBinding(&m_RasterizationSRB);
         m_RasterizationSRB->GetVariableByName(SHADER_TYPE_VERTEX, "g_Constants")->Set(m_Constants);
@@ -1689,6 +1777,11 @@ namespace Diligent
             // Interpolar luz ambiental
             float AmbientLight = lerp(0.02f, 0.1f, m_DayNightFactor);
 
+            // Obtener el tiempo actual para las animaciones
+            static auto startTime = std::chrono::high_resolution_clock::now();
+            auto currentTime = std::chrono::high_resolution_clock::now();
+            float time = std::chrono::duration<float>(currentTime - startTime).count();
+
             HLSL::GlobalConstants GConst;
             GConst.ViewProj = ViewProj.Transpose();
             GConst.ViewProjInv = ViewProj.Inverse().Transpose();
@@ -1697,7 +1790,10 @@ namespace Diligent
             GConst.DrawMode = m_DrawMode;
             GConst.MaxRayLength = 300.f;
             GConst.AmbientLight = AmbientLight;
-            GConst.DayNightFactor = m_DayNightFactor; // Pasar el factor día/noche
+            GConst.DayNightFactor = m_DayNightFactor;
+            GConst.Time = time;                   // Tiempo para animación de olas
+            GConst.WaveStrength = m_WaveStrength; // Intensidad de las olas
+            GConst.WaveSpeed = m_WaveSpeed;       // Velocidad de las olas
 
             m_pImmediateContext->UpdateBuffer(m_Constants, 0, static_cast<Uint32>(sizeof(GConst)), &GConst, RESOURCE_STATE_TRANSITION_MODE_TRANSITION);
         }
@@ -1903,6 +1999,24 @@ namespace Diligent
                          "Reflections\0"
                          "Fresnel term\0\0");
 
+            // Wave Settings
+            {
+                ImGui::Separator();
+                ImGui::TextColored(ImVec4(0.4f, 0.8f, 1.0f, 1.0f), "Ocean Wave Settings");
+
+                ImGui::TextDisabled("Wave Strength");
+                if (ImGui::IsItemHovered())
+                    ImGui::SetTooltip("Intensidad de las olas del océano (0.0 = plano, 1.0 = olas grandes)");
+
+                ImGui::SliderFloat("##WaveStrength", &m_WaveStrength, 0.0f, 1.0f, "%.2f");
+
+                ImGui::TextDisabled("Wave Speed");
+                if (ImGui::IsItemHovered())
+                    ImGui::SetTooltip("Velocidad de movimiento de las olas (1.0 = lento, 5.0 = rápido)");
+
+                ImGui::SliderFloat("##WaveSpeed", &m_WaveSpeed, 1.0f, 5.0f, "%.1f");
+            }
+
             // Building Settings
             {
                 ImGui::Separator();
@@ -2015,6 +2129,7 @@ namespace Diligent
                 ImGui::TextColored(ImVec4(0.7f, 1.0f, 0.7f, 1.0f), "Performance");
                 ImGui::Text("Total Objects: %zu", m_Scene.Objects.size());
                 ImGui::Text("Active Spaceships: %zu", m_SpaceshipDynamics.size());
+                ImGui::Text("Wave Vertices: ~1024");
                 ImGui::Text("Application average %.3f ms/frame (%.1f FPS)",
                             1000.0f / ImGui::GetIO().Framerate, ImGui::GetIO().Framerate);
             }

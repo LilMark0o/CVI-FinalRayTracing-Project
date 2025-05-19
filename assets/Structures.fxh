@@ -1,4 +1,3 @@
-
 #define RENDER_MODE_SHADED           0
 #define RENDER_MODE_G_BUFFER_COLOR   1
 #define RENDER_MODE_G_BUFFER_NORMAL  2
@@ -17,7 +16,11 @@ struct GlobalConstants
     int   DrawMode;
     float MaxRayLength;
     float AmbientLight;
-    float DayNightFactor; // Reemplazamos padding0 con este factor
+    float DayNightFactor;
+    float Time; // Añadido para animación de olas
+    float WaveStrength; // Intensidad de las olas
+    float WaveSpeed; // Velocidad de las olas
+    float padding0; // Para mantener alineación de 16 bytes
 };
 
 struct ObjectConstants

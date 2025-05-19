@@ -278,6 +278,10 @@ namespace Diligent
         float m_SpaceshipSpeed = 1.0f;         // Multiplicador de velocidad global
         bool m_EnableSpaceshipMovement = true; // Control para activar/desactivar movimiento
 
+        // Wave settings
+        float m_WaveStrength = 0.15f; // Intensidad de las olas (0.0 a 1.0)
+        float m_WaveSpeed = 2.0f;     // Velocidad de las olas (1.0 a 5.0)
+
         // Vulkan and DirectX require DXC shader compiler.
         // Metal uses the builtin glslang compiler.
 #if PLATFORM_MACOS || PLATFORM_IOS || PLATFORM_TVOS

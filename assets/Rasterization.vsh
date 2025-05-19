@@ -31,6 +31,17 @@ void main(in VSInput  VSIn,
     ObjectAttribs Obj = g_ObjectAttribs[g_ObjectConst.ObjectAttribsOffset + InstanceId];
 
     PSIn.WPos  = mul(float4(VSIn.Pos, 1.0), Obj.ModelMat);
+    
+    // Aplicar olas simples solo al suelo (objeto con Y cercano a -1.5)
+    if (PSIn.WPos.y > -2.0 && PSIn.WPos.y < -1.0)
+    {
+        // Olas simples usando solo sin
+        float wave = sin(PSIn.WPos.x + g_Constants.Time * g_Constants.WaveSpeed) * 
+                    sin(PSIn.WPos.z + g_Constants.Time * g_Constants.WaveSpeed) * 
+                    g_Constants.WaveStrength;
+        PSIn.WPos.y += wave;
+    }
+    
     PSIn.Pos   = mul(PSIn.WPos, g_Constants.ViewProj);
     PSIn.Norm  = normalize(mul(VSIn.Norm, (float3x3)Obj.NormalMat));
     PSIn.UV    = VSIn.UV;
